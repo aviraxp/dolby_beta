@@ -1,5 +1,9 @@
 package com.raincat.dolby_beta.hook;
 
+import static de.robv.android.xposed.XposedBridge.hookAllConstructors;
+import static de.robv.android.xposed.XposedHelpers.findAndHookMethod;
+import static de.robv.android.xposed.XposedHelpers.findClass;
+
 import android.app.Activity;
 import android.content.Context;
 import android.os.Bundle;
@@ -20,10 +24,6 @@ import javax.net.ssl.SSLSocketFactory;
 
 import de.robv.android.xposed.XC_MethodHook;
 
-import static de.robv.android.xposed.XposedBridge.hookAllConstructors;
-import static de.robv.android.xposed.XposedHelpers.findAndHookMethod;
-import static de.robv.android.xposed.XposedHelpers.findClass;
-
 /**
  * <pre>
  *     author : RainCat
@@ -36,7 +36,7 @@ import static de.robv.android.xposed.XposedHelpers.findClass;
 
 public class UnblockMusicHook {
     private final static String STOP_PROXY = "killall -9 node >/dev/null 2>&1";
-    private final static String START_PROXY = "./node app.js -o kuwo qq migu kugou -a 127.0.0.1 -p 23338:23339";
+    private final static String START_PROXY = "./node app.js -o kuwo migu bilibili pyncmd -a 127.0.0.1 -p 23338:23339";
 
     private static String dataPath;
     private static SSLSocketFactory socketFactory;
@@ -44,17 +44,15 @@ public class UnblockMusicHook {
     private static Object objectSSLSocketFactory;
 
     private final String classMainActivity = "com.netease.cloudmusic.activity.MainActivity";
+    private final List<String> whiteUrlList = Arrays.asList(
+            "song/enhance/player/url", "song/enhance/download/url");
+    private final List<String> blackUrlList = Arrays.asList("eapi/playlist/subscribe",
+            "163yun.com", "api.k.163.com");
     private String classRealCall;
     private String fieldHttpUrl = "url";
     private String fieldProxy = "proxy";
     private String fieldSSLSocketFactory;
 
-    private final List<String> whiteUrlList = Arrays.asList(
-            "song/enhance/player/url", "song/enhance/download/url");
-
-    private final List<String> blackUrlList = Arrays.asList("eapi/playlist/subscribe",
-            "163yun.com");
-    
     public UnblockMusicHook(Context context, int versionCode, boolean isPlayProcess) {
         if (versionCode >= 7001080) {
             classRealCall = "okhttp3.internal.connection.RealCall";
@@ -85,23 +83,19 @@ public class UnblockMusicHook {
 
                     Object urlObj = urlField.get(request);
 
-                    for (String url : blackUrlList) {
-                        if (urlObj.toString().contains(url)) {
-                            return;
-                        }
-                    }
-
                     if (Setting.isWhiteEnabled()) {
                         for (String url : whiteUrlList) {
                             if (urlObj.toString().contains(url)) {
-                                if (ExtraDao.getInstance(context).getExtra("ScriptRunning").equals("1"))
-                                    proxyField.set(client, proxy);
-                                else
-                                    Tools.showToastOnLooper(context, "node未成功运行，请到模块内选择正确的脚本与Node路径，若已使用存储重定向等APP请保证网易云音乐也可访问到脚本路径！");
+                                proxyField.set(client, proxy);
                                 break;
                             }
                         }
                     } else {
+                        for (String url : blackUrlList) {
+                            if (urlObj.toString().contains(url)) {
+                                return;
+                            }
+                        }
                         Field sslSocketFactoryField = client.getClass().getDeclaredField(fieldSSLSocketFactory);
                         sslSocketFactoryField.setAccessible(true);
                         if (objectProxy == null)
@@ -109,15 +103,11 @@ public class UnblockMusicHook {
                         if (objectSSLSocketFactory == null)
                             objectSSLSocketFactory = sslSocketFactoryField.get(client);
 
-                        if (ExtraDao.getInstance(context).getExtra("ScriptRunning").equals("0")) {
-                            proxyField.set(client, objectProxy);
-                            sslSocketFactoryField.set(client, objectSSLSocketFactory);
-                        } else {
-                            if (socketFactory == null)
-                                socketFactory = Tools.getSLLContext(dataPath + File.separator + "ca.crt").getSocketFactory();
-                            proxyField.set(client, proxy);
-                            sslSocketFactoryField.set(client, socketFactory);
-                        }
+                        if (socketFactory == null)
+                            socketFactory = Tools.getSLLContext(dataPath + File.separator + "ca.crt").getSocketFactory();
+                        proxyField.set(client, proxy);
+                        sslSocketFactoryField.set(client, socketFactory);
+
                     }
                 }
             }
